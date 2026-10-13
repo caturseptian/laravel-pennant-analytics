@@ -4,11 +4,14 @@ namespace CaturSeptian\PennantAnalytics\Http\Controllers;
 
 use CaturSeptian\PennantAnalytics\PennantAnalyticsEngine;
 use CaturSeptian\PennantAnalytics\Storage\MetricsRepository;
+use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Read-only dashboard. All-time views read the compact daily metrics table;
@@ -20,6 +23,7 @@ class DashboardController extends Controller
         protected MetricsRepository $repository,
         protected PennantAnalyticsEngine $engine,
         protected ViewFactory $view,
+        protected ValidationFactory $validator,
     ) {}
 
     public function index(): View
@@ -29,19 +33,36 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * Invalid filters never redirect: a GET report page has no sensible "back",
+     * and redirecting would silently show some other page's data. Instead the
+     * page renders the error next to the unfiltered report (JSON: 422).
+     */
     public function show(Request $request, string $feature): View|JsonResponse
     {
-        /** @var array{action?: string|null, from?: string|null, to?: string|null} $validated */
-        $validated = $request->validate([
-            'action' => ['nullable', 'string', 'max:100'],
+        $actions = $this->repository->actions($feature);
+
+        $validator = $this->validator->make($request->query(), [
+            'action' => ['nullable', 'string', Rule::in($actions)],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ], [
+            'action.in' => 'No ":input" conversions are recorded for this feature.',
         ]);
 
-        $from = $validated['from'] ?? null;
-        $to = $validated['to'] ?? null;
-        $actions = $this->repository->actions($feature);
-        $action = $validated['action'] ?? $actions[0] ?? null;
+        if ($validator->fails() && $request->wantsJson()) {
+            throw new ValidationException($validator);
+        }
+
+        // Keep only the filters that passed; an invalid one is simply not applied.
+        $failed = $validator->errors()->messages();
+        $filter = fn (string $key): ?string => ! isset($failed[$key]) && is_string($request->query($key)) && $request->query($key) !== ''
+            ? $request->query($key)
+            : null;
+
+        $from = $filter('from');
+        $to = $filter('to');
+        $action = $filter('action') ?? $actions[0] ?? null;
 
         $report = $action !== null ? $this->engine->report($feature, $action, $from, $to) : null;
 
@@ -56,6 +77,7 @@ class DashboardController extends Controller
             'report' => $report,
             'from' => $from,
             'to' => $to,
+            'filterErrors' => $validator->errors()->all(),
         ]);
     }
 }
