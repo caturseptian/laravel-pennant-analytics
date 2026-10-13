@@ -1,0 +1,59 @@
+{
+    "name": "caturseptian/laravel-pennant-analytics",
+    "description": "Impression & conversion analytics with statistical significance for Laravel Pennant feature flags.",
+    "keywords": ["laravel", "pennant", "feature-flags", "ab-testing", "analytics", "conversion", "experiments", "statistics"],
+    "homepage": "https://github.com/caturseptian/laravel-pennant-analytics",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Catur Septian",
+            "homepage": "https://github.com/caturseptian",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/database": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "laravel/pennant": "^1.10"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "CaturSeptian\\PennantAnalytics\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "CaturSeptian\\PennantAnalytics\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "format": "vendor/bin/pint"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "CaturSeptian\\PennantAnalytics\\PennantAnalyticsServiceProvider"
+            ],
+            "aliases": {
+                "PennantAnalytics": "CaturSeptian\\PennantAnalytics\\Facades\\PennantAnalytics"
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
