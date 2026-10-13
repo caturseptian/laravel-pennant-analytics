@@ -148,6 +148,8 @@ $report->toArray();              // also served as JSON by the dashboard
 
 **Date ranges are cohorts.** `--from`/`--to` (and the dashboard's date filter) select the subjects **first exposed** in that range, inclusive, and count every conversion *those* subjects made, even after the range ends. "September" therefore means "users who entered the experiment in September and how they converted". Counting conversions by the day they happened instead would mix two different populations, and could even show rates above 100%. Cohort reports read the `subjects` table, so they are heavier than all-time reports, and they leave `total_conversions` empty because repeat events aren't stored per subject.
 
+Invalid dashboard filters (a malformed date, or an action that was never recorded) are reported on the page above the unfiltered report, and the JSON view returns them as `422` errors.
+
 When an experiment is over, run `php artisan pennant-analytics:forget new-checkout-ui` to delete its data.
 
 ## How it works
@@ -213,7 +215,26 @@ A variant is reported as significant only if **all** of these hold:
 - Each group has at least `min_sample_size` impressions (default 100).
 - Each group has at least 5 expected successes and 5 expected failures, which the normal approximation needs.
 
-Until then the dashboard shows *Insufficient data* instead of a misleading verdict. The control is the first variant matching `control_variants` (`false`, `control`, `off`, `baseline`), otherwise the most exposed one.
+Until then the dashboard shows *Insufficient data* instead of a misleading verdict. The page also states the exact threshold in use, e.g. "Significant when p < 0.025 (95% confidence, Bonferroni-corrected for 2 comparisons)". p-values below the display precision are shown as `< 0.0001`.
+
+**The control (baseline)** is chosen in this order:
+
+1. the control you configure for the feature: `'controls' => ['pricing-page' => 'monthly']`
+2. the first variant matching `control_variants` (`false`, `control`, `off`, `baseline`)
+3. otherwise the alphabetically first variant
+
+Exposure counts never decide the control. Otherwise one extra visitor could flip the baseline and change every verdict. Configure `controls` for every multivariate experiment.
+
+### Long-running processes
+
+Pennant keeps evaluated flag values in memory and searches them linearly. In a loop that touches thousands of users in one process (imports, backfills, queue workers), each lookup gets slower: 5 → 12 → 19 ms per user over 3,000 users in our profiling. This package added no measurable overhead in the same test. Flush Pennant's cache as you go:
+
+```php
+foreach ($users as $user) {
+    PennantAnalytics::for($user)->impression('new-checkout-ui');
+    Feature::flushCache(); // keeps it flat at ~0.5 ms per user
+}
+```
 
 ## Configuration
 
