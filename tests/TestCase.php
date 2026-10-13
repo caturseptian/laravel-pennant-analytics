@@ -28,7 +28,7 @@ abstract class TestCase extends Orchestra
 
     protected function defineDatabaseMigrations(): void
     {
-        $migration = include __DIR__.'/../database/migrations/create_pennant_analytics_tables.php';
+        $migration = include __DIR__.'/../database/migrations/2026_10_13_000000_create_pennant_analytics_tables.php';
         $migration->down();
         $migration->up();
 
