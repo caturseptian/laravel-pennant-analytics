@@ -132,7 +132,7 @@ it('allows a custom guest resolver', function () {
 
     PennantAnalytics::impression('button-color');
 
-    expect(DB::table('pennant_analytics_subjects')->value('subject'))->toBe(hash('xxh128', 'guest|device-abc'));
+    expect(DB::table('pennant_analytics_subjects')->value('subject'))->toBe(hash('xxh128', 'guest|custom|device-abc'));
 });
 
 it('writes nothing until terminate in deferred mode', function () {
