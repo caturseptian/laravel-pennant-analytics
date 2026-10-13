@@ -10,11 +10,11 @@ use Closure;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @method static void impression(string $feature, mixed $scope = null)
- * @method static void track(string $feature, string $action, mixed $scope = null)
+ * @method static void impression(string|\BackedEnum|\UnitEnum $feature, mixed $scope = null)
+ * @method static void track(string|\BackedEnum|\UnitEnum $feature, string $action, mixed $scope = null)
  * @method static PendingScopedTracking for(mixed $scope)
  * @method static PennantAnalyticsEngine resolveGuestUsing(Closure $resolver)
- * @method static ExperimentReport report(string $feature, string $action, ?string $from = null, ?string $to = null)
+ * @method static ExperimentReport report(string|\BackedEnum|\UnitEnum $feature, string $action, ?string $from = null, ?string $to = null)
  * @method static void flush()
  * @method static list<Hit> pending()
  * @method static string impressionAction()
