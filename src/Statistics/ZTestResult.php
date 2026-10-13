@@ -31,6 +31,15 @@ final readonly class ZTestResult
     }
 
     /**
+     * p-value for display: four decimals, or "< 0.0001" below that precision
+     * (printing "0.0000" would wrongly suggest an impossible p of exactly 0).
+     */
+    public function formattedPValue(): string
+    {
+        return $this->pValue < 0.0001 ? '< 0.0001' : number_format($this->pValue, 4);
+    }
+
+    /**
      * One label for the dashboard, CLI and JSON alike.
      */
     public function verdict(): string
