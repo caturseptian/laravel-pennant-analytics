@@ -4,6 +4,17 @@ All notable changes to `laravel-pennant-analytics` will be documented in this fi
 
 ## Unreleased
 
+Findings from user acceptance testing in a real Laravel 13 app:
+
+- The migration is published with a date prefix, so it runs after Pennant's.
+- The control never depends on exposure counts: per-feature `controls`
+  config, then `control_variants`, then alphabetical order.
+- CLI and dashboard show the verdict per variant and the exact significance
+  threshold (Bonferroni included); p-values below 0.0001 print as `< 0.0001`.
+- Invalid dashboard filters show an error instead of silently redirecting;
+  unknown actions are rejected (JSON: 422).
+- On phones, dashboard tables become one labelled card per row.
+
 - Date-range reports are cohort based (subjects first exposed in the range,
   with all their conversions); previously they could exceed 100% and drop the
   control variant.
