@@ -6,6 +6,25 @@ on:
   pull_request:
 
 jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+
+    name: Pint & Larastan
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - run: composer update --prefer-dist --no-interaction --no-progress
+
+      - run: vendor/bin/pint --test
+
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
   tests:
     runs-on: ubuntu-latest
 
@@ -48,9 +67,6 @@ jobs:
 
       - run: composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
       - run: composer update --prefer-dist --no-interaction --no-progress
-
-      - run: vendor/bin/pint --test
-        if: matrix.database == 'sqlite'
 
       - name: Run tests
         run: vendor/bin/pest

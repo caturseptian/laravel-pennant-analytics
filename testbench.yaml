@@ -1,0 +1,3 @@
+providers:
+  - Laravel\Pennant\PennantServiceProvider
+  - CaturSeptian\PennantAnalytics\PennantAnalyticsServiceProvider
