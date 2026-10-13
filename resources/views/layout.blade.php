@@ -48,6 +48,18 @@
         input, select, button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
         button { background: var(--accent); color: #fff; border-color: transparent; cursor: pointer; }
         .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+        /* Phones: one card per row, every value labelled, nothing off-screen. */
+        @media (max-width: 640px) {
+            table.stack thead { display: none; }
+            table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+            table.stack tr { padding: 12px 0; border-bottom: 1px solid var(--border); }
+            table.stack tr:last-child { border-bottom: 0; }
+            table.stack td { border: 0; padding: 3px 0; white-space: normal; }
+            table.stack td.lead { padding-bottom: 6px; font-size: 16px; }
+            table.stack td[data-label] { display: flex; justify-content: space-between; gap: 16px; text-align: right; }
+            table.stack td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 13px; text-align: left; }
+            table.stack td.bar-cell { padding: 6px 0; }
+        }
         code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--neutral-bg); padding: 1px 6px; border-radius: 4px; }
     </style>
 </head>
