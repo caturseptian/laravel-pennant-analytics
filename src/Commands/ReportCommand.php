@@ -22,6 +22,16 @@ class ReportCommand extends Command
     {
         $feature = $this->argument('feature');
         $action = $this->argument('action') ?? $repository->actions($feature)[0] ?? null;
+        $from = $this->option('from');
+        $to = $this->option('to');
+
+        foreach (['from' => $from, 'to' => $to] as $option => $date) {
+            if ($date !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+                $this->components->error("--{$option} must be a date in Y-m-d format.");
+
+                return self::FAILURE;
+            }
+        }
 
         if ($action === null) {
             $this->components->warn("No conversions recorded for [{$feature}] yet.");
@@ -29,7 +39,7 @@ class ReportCommand extends Command
             return self::FAILURE;
         }
 
-        $report = $engine->report($feature, $action, $this->option('from'), $this->option('to'));
+        $report = $engine->report($feature, $action, $from, $to);
 
         if ($this->option('json')) {
             $this->line((string) json_encode($report->toArray(), JSON_PRETTY_PRINT));
@@ -53,6 +63,10 @@ class ReportCommand extends Command
 
         $this->newLine();
         $this->line($report->summary());
+
+        if ($from !== null || $to !== null) {
+            $this->line('<fg=gray>Cohort of subjects first exposed in the date range, with all of their conversions.</>');
+        }
 
         return self::SUCCESS;
     }
