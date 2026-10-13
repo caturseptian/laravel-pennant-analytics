@@ -23,8 +23,32 @@ final readonly class ExperimentReport
         public string $feature,
         public string $action,
         public array $variants,
+        /** Overall confidence level, e.g. 0.95. */
         public float $confidence,
+        /** Number of challenger-vs-control comparisons (Bonferroni divisor). */
+        public int $comparisons = 1,
     ) {}
+
+    /**
+     * The p-value a single comparison must beat: (1 - confidence) / comparisons.
+     */
+    public function threshold(): float
+    {
+        return (1 - $this->confidence) / max(1, $this->comparisons);
+    }
+
+    /**
+     * e.g. "p < 0.025 (95% confidence, Bonferroni-corrected for 2 comparisons)".
+     */
+    public function thresholdDescription(): string
+    {
+        $confidence = rtrim(rtrim(number_format($this->confidence * 100, 2), '0'), '.');
+        $threshold = rtrim(rtrim(number_format($this->threshold(), 4), '0'), '.');
+
+        return $this->comparisons > 1
+            ? "p < {$threshold} ({$confidence}% confidence, Bonferroni-corrected for {$this->comparisons} comparisons)"
+            : "p < {$threshold} ({$confidence}% confidence)";
+    }
 
     /**
      * @param  list<VariantCount>  $counts
@@ -78,7 +102,7 @@ final readonly class ExperimentReport
         // Control first, then best performers; labels break ties (stable sort).
         usort($variants, fn (VariantResult $a, VariantResult $b) => [$b->isControl, $b->conversionRate()] <=> [$a->isControl, $a->conversionRate()]);
 
-        return new self($feature, $action, $variants, $config->confidence);
+        return new self($feature, $action, $variants, $config->confidence, max(1, count($labels) - 1));
     }
 
     public function control(): ?VariantResult
@@ -196,6 +220,7 @@ final readonly class ExperimentReport
             'feature' => $this->feature,
             'action' => $this->action,
             'confidence' => $this->confidence,
+            'threshold' => round($this->threshold(), 6),
             'summary' => $this->summary(),
             'significant' => $this->hasSignificantWinner(),
             'variants' => array_map(fn (VariantResult $v) => [
@@ -209,6 +234,7 @@ final readonly class ExperimentReport
                 'z_score' => $v->comparison ? round($v->comparison->zScore, 4) : null,
                 'p_value' => $v->comparison ? round($v->comparison->pValue, 6) : null,
                 'significant' => $v->comparison?->isSignificant(),
+                'result' => $v->comparison?->verdict() ?? 'baseline',
             ], $this->variants),
         ];
     }
