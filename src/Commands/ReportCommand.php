@@ -50,7 +50,7 @@ class ReportCommand extends Command
         $this->components->info("{$feature} → {$action}");
 
         $this->table(
-            ['Variant', 'Impressions', 'Conversions', 'Rate', 'Lift', 'p-value'],
+            ['Variant', 'Impressions', 'Conversions', 'Rate', 'Lift', 'p-value', 'Result'],
             array_map(fn (VariantResult $v) => [
                 $v->variant.($v->isControl ? ' (control)' : ''),
                 number_format($v->impressions),
@@ -58,11 +58,13 @@ class ReportCommand extends Command
                 number_format($v->conversionRate(), 2).'%',
                 $v->comparison?->relativeLift !== null ? sprintf('%+.1f%%', $v->comparison->relativeLift) : '—',
                 $v->comparison ? number_format($v->comparison->pValue, 4) : '—',
+                $v->comparison?->verdict() ?? 'baseline',
             ], $report->variants),
         );
 
         $this->newLine();
         $this->line($report->summary());
+        $this->line('<fg=gray>Significance threshold: '.$report->thresholdDescription().'</>');
 
         if ($from !== null || $to !== null) {
             $this->line('<fg=gray>Cohort of subjects first exposed in the date range, with all of their conversions.</>');
