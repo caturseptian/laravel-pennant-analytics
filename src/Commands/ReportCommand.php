@@ -57,7 +57,7 @@ class ReportCommand extends Command
                 number_format($v->conversions),
                 number_format($v->conversionRate(), 2).'%',
                 $v->comparison?->relativeLift !== null ? sprintf('%+.1f%%', $v->comparison->relativeLift) : '—',
-                $v->comparison ? number_format($v->comparison->pValue, 4) : '—',
+                $v->comparison?->formattedPValue() ?? '—',
                 $v->comparison?->verdict() ?? 'baseline',
             ], $report->variants),
         );
