@@ -2,32 +2,45 @@
 
 All notable changes to `laravel-pennant-analytics` will be documented in this file.
 
-## Unreleased
+## v1.0.0 - 2026-10-13
 
-Findings from user acceptance testing in a real Laravel 13 app:
+First release.
 
-- The migration is published with a date prefix, so it runs after Pennant's.
-- The control never depends on exposure counts: per-feature `controls`
-  config, then `control_variants`, then alphabetical order.
-- CLI and dashboard show the verdict per variant and the exact significance
-  threshold (Bonferroni included); p-values below 0.0001 print as `< 0.0001`.
-- Invalid dashboard filters show an error instead of silently redirecting;
-  unknown actions are rejected (JSON: 422).
-- On phones, dashboard tables become one labelled card per row.
+### Tracking
 
-- Date-range reports are cohort based (subjects first exposed in the range,
-  with all their conversions); previously they could exceed 100% and drop the
-  control variant.
-- Names that do not fit the schema throw `InvalidTrackingName` instead of
-  being silently dropped.
-- Class based and enum features are stored under Pennant's resolved name.
-- Hits carry their own timestamp, so queued hits keep their real date.
-- Counter writes lock rows in a fixed order and retry deadlocks; no lost
-  updates under concurrent load on MariaDB.
-- Typed `AnalyticsConfig`, validated at boot.
-- Laravel 11 support dropped (end of life, not installable).
-- Larastan level 8 in CI.
-- Initial release: impression & conversion tracking, first-exposure attribution,
-  deferred/queue/sync persistence, auto impressions, route middleware, Blade
-  directives, dashboard, two-proportion z-test with Bonferroni correction,
+- `PennantAnalytics::impression()` and `PennantAnalytics::track()` facade methods, plus
+  `PennantAnalytics::for($scope)` for teams, tenants and other scopes.
+- Automatic impressions from Pennant checks (`auto_impressions` config), the
+  `pennant.impression` route middleware, and the `@trackImpression` / `@trackConversion`
+  Blade directives.
+- Honours Pennant's default scope and `Feature::resolveScopeUsing()`; guests are identified
+  by a session UUID, or by your own resolver (`resolveGuestUsing()`).
+- Class-based and enum features are stored under Pennant's resolved name.
+- Conversions are attributed to the variant the subject first saw.
+- Names that do not fit the schema throw `InvalidTrackingName`; runtime failures are
+  reported and never break the request.
+
+### Storage and performance
+
+- Two narrow tables: one de-duplication row per subject, and daily counters.
+- Hits are written after the response (`deferred`), on a queue (`queue`) or inline (`sync`).
+  Each hit carries its own timestamp, so queued hits keep their real date.
+- Race-free counter updates; rows are locked in a fixed order and deadlocks are retried.
+  Tested with 16 concurrent writers on MariaDB and PostgreSQL.
+
+### Reporting
+
+- Dashboard (gate `viewPennantAnalytics`, local-only by default) with a JSON view, and the
   `pennant-analytics:report` and `pennant-analytics:forget` commands.
+- Two-proportion z-test with a Bonferroni correction for multivariate tests, minimum sample
+  guards, and a verdict per variant with the exact significance threshold.
+- A stable control: per-feature `controls` config, then `control_variants`, then
+  alphabetical order. It never depends on exposure counts.
+- Date ranges are cohorts: subjects first exposed in the range, with all their conversions.
+- Invalid dashboard filters are reported on the page (JSON: 422).
+- Responsive dashboard: one labelled card per row on phones.
+
+### Requirements
+
+- PHP 8.2+, Laravel 12 or 13, Laravel Pennant 1.10+.
+- Tested on SQLite, MySQL/MariaDB and PostgreSQL.
