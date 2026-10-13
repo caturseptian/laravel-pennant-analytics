@@ -6,8 +6,12 @@ use CaturSeptian\PennantAnalytics\Commands\ForgetCommand;
 use CaturSeptian\PennantAnalytics\Commands\ReportCommand;
 use CaturSeptian\PennantAnalytics\Http\Middleware\TrackFeatureImpressions;
 use CaturSeptian\PennantAnalytics\Storage\MetricsRepository;
+use CaturSeptian\PennantAnalytics\Support\AnalyticsConfig;
+use CaturSeptian\PennantAnalytics\Support\PennantResolver;
+use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Routing\Router;
@@ -23,20 +27,31 @@ class PennantAnalyticsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/pennant-analytics.php', 'pennant-analytics');
 
-        $this->app->singleton(MetricsRepository::class, fn (Application $app) => new MetricsRepository(
-            $app['db'],
-            $app['config']->get('pennant-analytics.connection'),
-            $app['config']->get('pennant-analytics.tables'),
-            $app['config']->get('pennant-analytics.impression_action'),
+        // Not a singleton: consumers that are singletons capture it once anyway,
+        // and tests can change config before resolving a fresh engine.
+        $this->app->bind(AnalyticsConfig::class, fn (Application $app) => AnalyticsConfig::fromArray(
+            (array) $app->make(Config::class)->get('pennant-analytics', []),
         ));
+
+        $this->app->singleton(MetricsRepository::class, function (Application $app) {
+            $config = $app->make(Config::class);
+
+            return new MetricsRepository(
+                $app->make(DatabaseManager::class),
+                $config->get('pennant-analytics.connection'),
+                [
+                    'subjects' => (string) $config->get('pennant-analytics.tables.subjects'),
+                    'metrics' => (string) $config->get('pennant-analytics.tables.metrics'),
+                ],
+                $app->make(AnalyticsConfig::class)->impressionAction,
+            );
+        });
+
+        $this->app->singleton(PennantResolver::class);
 
         // A singleton so the per-request buffer is shared by every caller.
         // It is drained on terminate, which also keeps it Octane-safe.
-        $this->app->singleton(PennantAnalyticsEngine::class, fn (Application $app) => new PennantAnalyticsEngine(
-            $app,
-            $app->make(MetricsRepository::class),
-            $app['config']->get('pennant-analytics'),
-        ));
+        $this->app->singleton(PennantAnalyticsEngine::class);
     }
 
     public function boot(): void
@@ -118,7 +133,8 @@ class PennantAnalyticsServiceProvider extends ServiceProvider
             Gate::define('viewPennantAnalytics', fn ($user = null) => $this->app->environment('local'));
         }
 
-        $config = $this->app['config']->get('pennant-analytics.dashboard');
+        /** @var array{enabled?: bool, path: string, domain?: string|null, middleware: list<string>} $config */
+        $config = $this->app->make(Config::class)->get('pennant-analytics.dashboard');
 
         if (! ($config['enabled'] ?? true) || $this->app->routesAreCached()) {
             return;
