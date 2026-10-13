@@ -78,7 +78,10 @@
                 </table>
             </div>
             <p class="muted" style="margin: 16px 0 0; font-size: 13px;">
-                Impressions and conversions are unique subjects. Significance uses a two-sided, two-proportion z-test against the control.
+                Impressions and conversions are unique subjects.
+                @if ($from || $to)
+                    Date range: subjects first exposed between {{ $from ?? 'the start' }} and {{ $to ?? 'today' }}, with every conversion they made since.
+                @endif Significance uses a two-sided, two-proportion z-test against the control.
                 Results are marked "insufficient data" until each variant has {{ config('pennant-analytics.statistics.min_sample_size') }}+ impressions and 5+ expected conversions.
             </p>
         </div>

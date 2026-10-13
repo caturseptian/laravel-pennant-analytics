@@ -3,11 +3,11 @@
 @section('content')
     <header>
         <h1>Pennant Analytics</h1>
-        <span class="muted">{{ $features->count() }} {{ \Illuminate\Support\Str::plural('feature', $features->count()) }} tracked</span>
+        <span class="muted">{{ count($features) }} {{ \Illuminate\Support\Str::plural('feature', count($features)) }} tracked</span>
     </header>
 
     <div class="card">
-        @if ($features->isEmpty())
+        @if ($features === [])
             <div class="empty">
                 <p>No data yet.</p>
                 <p>Record an impression with <code>PennantAnalytics::impression('feature')</code> and a conversion with
@@ -30,7 +30,7 @@
                             <td><a href="{{ route('pennant-analytics.show', $row->feature) }}">{{ $row->feature }}</a></td>
                             <td class="num">{{ $row->variants }}</td>
                             <td class="num">{{ number_format($row->impressions) }}</td>
-                            <td class="num muted">{{ $row->last_seen }}</td>
+                            <td class="num muted">{{ $row->lastSeen }}</td>
                         </tr>
                     @endforeach
                     </tbody>
