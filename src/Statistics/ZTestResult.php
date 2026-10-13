@@ -29,4 +29,17 @@ final readonly class ZTestResult
     {
         return $this->variantRate > $this->controlRate;
     }
+
+    /**
+     * One label for the dashboard, CLI and JSON alike.
+     */
+    public function verdict(): string
+    {
+        return match (true) {
+            ! $this->hasEnoughData => 'insufficient data',
+            ! $this->isSignificant() => 'not significant',
+            $this->isWinning() => 'significantly better',
+            default => 'significantly worse',
+        };
+    }
 }
