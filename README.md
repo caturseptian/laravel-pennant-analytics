@@ -14,6 +14,14 @@ PennantAnalytics::track('new-checkout-ui', 'completed-purchase');
 
 > **Variant TRUE is outperforming Variant FALSE by 30.0% (Statistically Significant)**
 
+![Pennant Analytics dashboard: conversion rate, lift, p-value and verdict per variant](art/dashboard.png)
+
+<details>
+<summary>On a phone</summary>
+
+<img src="art/dashboard-mobile.png" alt="Pennant Analytics dashboard at phone width: one labelled card per variant" width="410">
+</details>
+
 - **Native DX**: a facade, Blade directives, route middleware, an artisan command, and Pennant's own scopes.
 - **Zero request overhead**: hits are buffered in memory and written after the response has been sent, or on a queue.
 - **Lean storage**: daily counters updated with atomic increments plus one de-dup row per user. There's no raw event log to grow without limit.
