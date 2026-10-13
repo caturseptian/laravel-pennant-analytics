@@ -74,7 +74,8 @@ final readonly class ExperimentReport
         $labels = array_values(array_unique([...array_map(strval(...), array_keys($impressions)), ...array_map(strval(...), array_keys($conversions))]));
         sort($labels, SORT_STRING);
 
-        $control = self::pickControl($labels, $impressions, $config->controlVariants);
+        $configured = isset($config->controls[$feature]) ? [$config->controls[$feature]] : [];
+        $control = self::pickControl($labels, $configured, $config->controlVariants);
 
         $test = new TwoProportionZTest(
             confidence: 1 - (1 - $config->confidence) / max(1, count($labels) - 1),
@@ -185,30 +186,24 @@ final readonly class ExperimentReport
     }
 
     /**
-     * First configured control label present, else the most exposed variant
-     * (ties broken alphabetically, so the choice is deterministic).
+     * The baseline, in order of preference: the control configured for this
+     * feature, the first configured control value present, else the
+     * alphabetically first variant. Exposure counts are deliberately ignored:
+     * the baseline must not change because one more visitor arrived.
      *
      * @param  list<string>  $labels  sorted
-     * @param  array<string, VariantCount>  $impressions
+     * @param  list<string>  $configured  the feature's own control, if any
      * @param  list<string>  $preferred
      */
-    private static function pickControl(array $labels, array $impressions, array $preferred): ?string
+    private static function pickControl(array $labels, array $configured, array $preferred): ?string
     {
-        foreach ($preferred as $candidate) {
+        foreach ([...$configured, ...$preferred] as $candidate) {
             if (in_array($candidate, $labels, true)) {
                 return $candidate;
             }
         }
 
-        $control = null;
-
-        foreach ($labels as $label) {
-            if ($control === null || ($impressions[$label]->uniques ?? 0) > ($impressions[$control]->uniques ?? 0)) {
-                $control = $label;
-            }
-        }
-
-        return $control;
+        return $labels[0] ?? null;
     }
 
     /**
