@@ -57,15 +57,6 @@ it('falls back to the most exposed variant as control', function () {
     expect(PennantAnalytics::report('colors', 'completed-purchase')->control()->variant)->toBe('green');
 });
 
-it('filters by date range', function () {
-    seedExperiment('dated', ['false' => [100, 10], 'true' => [100, 20]], date: '2026-09-01');
-    seedExperiment('dated', ['false' => [100, 10], 'true' => [100, 40]], date: '2026-10-01');
-
-    $report = PennantAnalytics::report('dated', 'completed-purchase', from: '2026-10-01');
-
-    expect($report->leader()->conversions)->toBe(40);
-});
-
 it('builds reports end-to-end from tracked hits', function () {
     Feature::define('flag', fn (string $s) => str_ends_with($s, 'a'));
 
@@ -127,4 +118,27 @@ it('forgets a feature', function () {
     $this->artisan('pennant-analytics:forget', ['feature' => 'old', '--force' => true])->assertSuccessful();
 
     expect(metrics())->toBeEmpty();
+});
+
+it('rejects malformed dates on the command line', function () {
+    seedExperiment('new-checkout-ui', ['false' => [10, 1]]);
+
+    $this->artisan('pennant-analytics:report', ['feature' => 'new-checkout-ui', '--from' => '13/10/2026'])
+        ->expectsOutputToContain('--from must be a date in Y-m-d format.')
+        ->assertFailed();
+});
+
+it('reports a date range as a cohort on the dashboard and command line', function () {
+    Gate::define('viewPennantAnalytics', fn ($user = null) => true);
+    seedCohorts();
+
+    $this->getJson('/pennant-analytics/features/cohort?action=buy&from=2026-09-01&to=2026-09-30')
+        ->assertOk()
+        ->assertJsonPath('variants.0.variant', 'false')
+        ->assertJsonPath('variants.1.conversion_rate', 60)
+        ->assertJsonPath('variants.1.total_conversions', null);
+
+    $this->artisan('pennant-analytics:report', ['feature' => 'cohort', 'action' => 'buy', '--from' => '2026-09-01'])
+        ->expectsOutputToContain('Cohort of subjects first exposed in the date range')
+        ->assertSuccessful();
 });
