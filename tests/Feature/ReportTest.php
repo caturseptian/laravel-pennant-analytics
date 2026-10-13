@@ -1,6 +1,7 @@
 <?php
 
 use CaturSeptian\PennantAnalytics\Facades\PennantAnalytics;
+use CaturSeptian\PennantAnalytics\PennantAnalyticsEngine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Pennant\Feature;
@@ -51,10 +52,24 @@ it('applies a Bonferroni correction for multivariate experiments', function () {
         ->and(PennantAnalytics::report('four', 'completed-purchase')->control()->variant)->toBe('control');
 });
 
-it('falls back to the most exposed variant as control', function () {
-    seedExperiment('colors', ['blue' => [500, 50], 'green' => [800, 80]]);
+it('keeps the control stable when one more subject joins a variant', function () {
+    // Exposure counts must not decide the baseline: one extra visitor would
+    // otherwise flip the control and every verdict with it.
+    seedExperiment('plans', ['annual' => [2000, 234], 'lifetime' => [2001, 192], 'monthly' => [2000, 173]]);
 
-    expect(PennantAnalytics::report('colors', 'completed-purchase')->control()->variant)->toBe('green');
+    expect(PennantAnalytics::report('plans', 'completed-purchase')->control()->variant)->toBe('annual');
+});
+
+it('uses the control configured for the feature', function () {
+    config(['pennant-analytics.statistics.controls' => ['plans' => 'monthly']]);
+    app()->forgetInstance(PennantAnalyticsEngine::class);
+    PennantAnalytics::clearResolvedInstances();
+    seedExperiment('plans', ['annual' => [2000, 234], 'lifetime' => [2000, 192], 'monthly' => [2000, 173]]);
+
+    $report = PennantAnalytics::report('plans', 'completed-purchase');
+
+    expect($report->control()->variant)->toBe('monthly')
+        ->and($report->summary())->toBe('Variant ANNUAL is outperforming Variant MONTHLY by 35.3% (Statistically Significant)');
 });
 
 it('builds reports end-to-end from tracked hits', function () {
@@ -161,4 +176,45 @@ it('marks the significance result per variant on the command line', function () 
         )
         ->expectsOutputToContain('Significance threshold: p < 0.025 (95% confidence, Bonferroni-corrected for 2 comparisons)')
         ->assertSuccessful();
+});
+
+it('prints tiny p-values as below the display precision', function () {
+    seedExperiment('new-checkout-ui', ['false' => [3000, 288], 'true' => [3000, 439]]);
+
+    $this->artisan('pennant-analytics:report', ['feature' => 'new-checkout-ui', 'action' => 'completed-purchase'])
+        ->expectsOutputToContain('< 0.0001')
+        ->assertSuccessful();
+
+    Gate::define('viewPennantAnalytics', fn ($user = null) => true);
+    $this->get('/pennant-analytics/features/new-checkout-ui')->assertSee('&lt; 0.0001', false)->assertDontSee('0.0000');
+});
+
+it('shows invalid dates as an error on the page instead of redirecting', function () {
+    Gate::define('viewPennantAnalytics', fn ($user = null) => true);
+    seedExperiment('new-checkout-ui', ['false' => [2000, 200], 'true' => [2000, 260]]);
+
+    $this->from('/somewhere-else')
+        ->get('/pennant-analytics/features/new-checkout-ui?from=13-10-2026&to=yesterday')
+        ->assertOk()
+        ->assertSee('The from field must match the format Y-m-d.')
+        ->assertSee('Variant TRUE is outperforming Variant FALSE'); // unfiltered report still shown
+
+    $this->getJson('/pennant-analytics/features/new-checkout-ui?from=13-10-2026')
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('from');
+});
+
+it('rejects an action that was never recorded for the feature', function () {
+    Gate::define('viewPennantAnalytics', fn ($user = null) => true);
+    seedExperiment('new-checkout-ui', ['false' => [2000, 200], 'true' => [2000, 260]]);
+
+    $this->get('/pennant-analytics/features/new-checkout-ui?action=made-up')
+        ->assertOk()
+        ->assertSee('No "made-up" conversions are recorded for this feature.')
+        ->assertSee('completed-purchase')
+        ->assertDontSee('MADE-UP');
+
+    $this->getJson('/pennant-analytics/features/new-checkout-ui?action=made-up')
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('action');
 });
