@@ -7,6 +7,15 @@
         <h1><a href="{{ route('pennant-analytics.index') }}">Pennant Analytics</a> <span class="muted">/</span> {{ $feature }}</h1>
     </header>
 
+    @if ($filterErrors !== [])
+        <div class="verdict bad" role="alert">
+            @foreach ($filterErrors as $message)
+                <div>{{ $message }}</div>
+            @endforeach
+            <div style="font-size: 13px; font-weight: 400; margin-top: 6px;">Showing the report without the invalid filter.</div>
+        </div>
+    @endif
+
     @if ($report === null)
         <div class="card empty">
             <p>No conversion actions recorded for <code>{{ $feature }}</code> yet.</p>
@@ -38,7 +47,7 @@
             <h2>{{ $action }}</h2>
             <p class="muted" style="margin: -6px 0 12px; font-size: 13px;">Significant when {{ $report->thresholdDescription() }}</p>
             <div class="table-scroll">
-                <table>
+                <table class="stack">
                     <thead>
                     <tr>
                         <th>Variant</th>
@@ -55,14 +64,14 @@
                     @foreach ($report->variants as $variant)
                         @php $c = $variant->comparison; @endphp
                         <tr>
-                            <td><strong>{{ $variant->variant }}</strong> @if ($variant->isControl)<span class="pill">control</span>@endif</td>
-                            <td class="num">{{ number_format($variant->impressions) }}</td>
-                            <td class="num">{{ number_format($variant->conversions) }}</td>
-                            <td class="num">{{ number_format($variant->conversionRate(), 2) }}%</td>
-                            <td><div class="bar {{ $variant->isControl ? 'control' : '' }}"><span style="width: {{ $variant->conversionRate() / $maxRate * 100 }}%"></span></div></td>
-                            <td class="num">{{ $c?->relativeLift !== null ? sprintf('%+.1f%%', $c->relativeLift) : '—' }}</td>
-                            <td class="num">{{ $c ? number_format($c->pValue, 4) : '—' }}</td>
-                            <td>
+                            <td class="lead"><strong>{{ $variant->variant }}</strong> @if ($variant->isControl)<span class="pill">control</span>@endif</td>
+                            <td class="num" data-label="Impressions">{{ number_format($variant->impressions) }}</td>
+                            <td class="num" data-label="Conversions">{{ number_format($variant->conversions) }}</td>
+                            <td class="num" data-label="Rate">{{ number_format($variant->conversionRate(), 2) }}%</td>
+                            <td class="bar-cell"><div class="bar {{ $variant->isControl ? 'control' : '' }}"><span style="width: {{ $variant->conversionRate() / $maxRate * 100 }}%"></span></div></td>
+                            <td class="num" data-label="Lift">{{ $c?->relativeLift !== null ? sprintf('%+.1f%%', $c->relativeLift) : '—' }}</td>
+                            <td class="num" data-label="p-value">{{ $c?->formattedPValue() ?? '—' }}</td>
+                            <td data-label="Result">
                                 @if ($c === null)
                                     <span class="muted">baseline</span>
                                 @else

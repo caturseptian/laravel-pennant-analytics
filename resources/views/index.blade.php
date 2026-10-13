@@ -15,7 +15,7 @@
             </div>
         @else
             <div class="table-scroll">
-                <table>
+                <table class="stack">
                     <thead>
                     <tr>
                         <th>Feature</th>
@@ -27,10 +27,10 @@
                     <tbody>
                     @foreach ($features as $row)
                         <tr>
-                            <td><a href="{{ route('pennant-analytics.show', $row->feature) }}">{{ $row->feature }}</a></td>
-                            <td class="num">{{ $row->variants }}</td>
-                            <td class="num">{{ number_format($row->impressions) }}</td>
-                            <td class="num muted">{{ $row->lastSeen }}</td>
+                            <td class="lead"><a href="{{ route('pennant-analytics.show', $row->feature) }}">{{ $row->feature }}</a></td>
+                            <td class="num" data-label="Variants">{{ $row->variants }}</td>
+                            <td class="num" data-label="Unique impressions">{{ number_format($row->impressions) }}</td>
+                            <td class="num muted" data-label="Last activity">{{ $row->lastSeen }}</td>
                         </tr>
                     @endforeach
                     </tbody>
