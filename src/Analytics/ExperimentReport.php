@@ -3,7 +3,8 @@
 namespace CaturSeptian\PennantAnalytics\Analytics;
 
 use CaturSeptian\PennantAnalytics\Statistics\TwoProportionZTest;
-use Illuminate\Support\Collection;
+use CaturSeptian\PennantAnalytics\Storage\VariantCount;
+use CaturSeptian\PennantAnalytics\Support\AnalyticsConfig;
 
 /**
  * Conversion report for one feature + one conversion action.
@@ -26,47 +27,58 @@ final readonly class ExperimentReport
     ) {}
 
     /**
-     * @param  Collection<int, object{variant: string, action: string, total: int, uniques: int}>  $rows
-     * @param  array{confidence?: float, min_sample_size?: int, control_variants?: list<string>}  $options
+     * @param  list<VariantCount>  $counts
      */
-    public static function build(string $feature, string $action, Collection $rows, string $impressionAction, array $options = []): self
+    public static function build(string $feature, string $action, array $counts, AnalyticsConfig $config): self
     {
-        $confidence = (float) ($options['confidence'] ?? 0.95);
-        $impressions = $rows->where('action', $impressionAction)->keyBy('variant');
-        $conversions = $rows->where('action', $action)->keyBy('variant');
+        /** @var array<string, VariantCount> $impressions */
+        $impressions = [];
+        /** @var array<string, VariantCount> $conversions */
+        $conversions = [];
 
-        $labels = $impressions->keys()->merge($conversions->keys())->unique()->sort()->values();
-        $control = self::pickControl($labels, $impressions, $options['control_variants'] ?? []);
+        foreach ($counts as $count) {
+            match ($count->action) {
+                $config->impressionAction => $impressions[$count->variant] = $count,
+                $action => $conversions[$count->variant] = $count,
+                default => null,
+            };
+        }
 
-        $comparisons = max(1, $labels->count() - 1);
+        // Cohort (date range) counts carry no event totals.
+        $isCohort = array_filter($counts, fn (VariantCount $count) => $count->total === null) !== [];
+
+        $labels = array_values(array_unique([...array_map(strval(...), array_keys($impressions)), ...array_map(strval(...), array_keys($conversions))]));
+        sort($labels, SORT_STRING);
+
+        $control = self::pickControl($labels, $impressions, $config->controlVariants);
+
         $test = new TwoProportionZTest(
-            confidence: 1 - (1 - $confidence) / $comparisons,
-            minSampleSize: (int) ($options['min_sample_size'] ?? 100),
+            confidence: 1 - (1 - $config->confidence) / max(1, count($labels) - 1),
+            minSampleSize: $config->minSampleSize,
         );
 
-        $controlImpressions = (int) ($impressions[$control]->uniques ?? 0);
-        $controlConversions = min($controlImpressions, (int) ($conversions[$control]->uniques ?? 0));
+        $controlImpressions = $control !== null ? ($impressions[$control]->uniques ?? 0) : 0;
+        $controlConversions = $control !== null ? min($controlImpressions, $conversions[$control]->uniques ?? 0) : 0;
 
-        $variants = $labels->map(function (string $label) use ($impressions, $conversions, $control, $test, $controlImpressions, $controlConversions) {
-            $n = (int) ($impressions[$label]->uniques ?? 0);
-            // Clamp guards against legacy data written outside the engine.
-            $x = min($n, (int) ($conversions[$label]->uniques ?? 0));
+        $variants = array_map(function (string $label) use ($impressions, $conversions, $control, $test, $controlImpressions, $controlConversions, $isCohort) {
+            $n = $impressions[$label]->uniques ?? 0;
+            // Clamp guards against rows written outside the engine.
+            $x = min($n, $conversions[$label]->uniques ?? 0);
 
             return new VariantResult(
                 variant: $label,
                 impressions: $n,
                 conversions: $x,
-                totalConversions: (int) ($conversions[$label]->total ?? 0),
+                totalConversions: isset($conversions[$label]) ? $conversions[$label]->total : ($isCohort ? null : 0),
                 isControl: $label === $control,
                 comparison: $label === $control ? null : $test->compare($controlConversions, $controlImpressions, $x, $n),
             );
-        })
-            // Control first, then best performers.
-            ->sortBy([fn (VariantResult $a, VariantResult $b) => [$b->isControl, $b->conversionRate()] <=> [$a->isControl, $a->conversionRate()]])
-            ->values()
-            ->all();
+        }, $labels);
 
-        return new self($feature, $action, $variants, $confidence);
+        // Control first, then best performers; labels break ties (stable sort).
+        usort($variants, fn (VariantResult $a, VariantResult $b) => [$b->isControl, $b->conversionRate()] <=> [$a->isControl, $a->conversionRate()]);
+
+        return new self($feature, $action, $variants, $config->confidence);
     }
 
     public function control(): ?VariantResult
@@ -98,7 +110,9 @@ final readonly class ExperimentReport
 
     public function hasSignificantWinner(): bool
     {
-        return (bool) $this->leader()?->comparison?->isSignificant() && $this->leader()->comparison->isWinning();
+        $comparison = $this->leader()?->comparison;
+
+        return $comparison !== null && $comparison->isSignificant() && $comparison->isWinning();
     }
 
     /**
@@ -115,6 +129,11 @@ final readonly class ExperimentReport
         }
 
         $result = $leader->comparison;
+
+        if ($result === null) {
+            return 'Not enough variants to compare yet.';
+        }
+
         $name = fn (VariantResult $v) => 'Variant '.mb_strtoupper($v->variant);
 
         if ($result->relativeLift === null) {
@@ -142,19 +161,30 @@ final readonly class ExperimentReport
     }
 
     /**
-     * @param  Collection<int, string>  $labels
-     * @param  Collection<string, object>  $impressions
+     * First configured control label present, else the most exposed variant
+     * (ties broken alphabetically, so the choice is deterministic).
+     *
+     * @param  list<string>  $labels  sorted
+     * @param  array<string, VariantCount>  $impressions
      * @param  list<string>  $preferred
      */
-    private static function pickControl(Collection $labels, Collection $impressions, array $preferred): ?string
+    private static function pickControl(array $labels, array $impressions, array $preferred): ?string
     {
         foreach ($preferred as $candidate) {
-            if ($labels->contains($candidate)) {
+            if (in_array($candidate, $labels, true)) {
                 return $candidate;
             }
         }
 
-        return $labels->sortByDesc(fn (string $label) => $impressions[$label]->uniques ?? 0)->first();
+        $control = null;
+
+        foreach ($labels as $label) {
+            if ($control === null || ($impressions[$label]->uniques ?? 0) > ($impressions[$control]->uniques ?? 0)) {
+                $control = $label;
+            }
+        }
+
+        return $control;
     }
 
     /**

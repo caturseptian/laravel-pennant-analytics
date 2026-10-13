@@ -12,8 +12,8 @@ final readonly class VariantResult
         public int $impressions,
         /** Unique subjects who performed the conversion action. */
         public int $conversions,
-        /** Every conversion event, including repeats by the same subject. */
-        public int $totalConversions,
+        /** Every conversion event incl. repeats; null for date-range (cohort) reports. */
+        public ?int $totalConversions,
         public bool $isControl,
         /** Comparison against the control; null for the control itself. */
         public ?ZTestResult $comparison = null,
