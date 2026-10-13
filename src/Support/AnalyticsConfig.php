@@ -22,6 +22,7 @@ final readonly class AnalyticsConfig
     /**
      * @param  list<string>  $autoImpressionFeatures  empty = every feature
      * @param  list<string>  $controlVariants
+     * @param  array<string, string>  $controls  feature name => control variant
      */
     public function __construct(
         public bool $enabled,
@@ -34,6 +35,7 @@ final readonly class AnalyticsConfig
         public float $confidence,
         public int $minSampleSize,
         public array $controlVariants,
+        public array $controls = [],
     ) {
         if ($impressionAction === '' || mb_strlen($impressionAction) > self::MAX_ACTION_LENGTH) {
             throw new InvalidArgumentException('pennant-analytics.impression_action must be 1-'.self::MAX_ACTION_LENGTH.' characters.');
@@ -67,6 +69,7 @@ final readonly class AnalyticsConfig
             confidence: (float) ($config['statistics']['confidence'] ?? 0.95),
             minSampleSize: (int) ($config['statistics']['min_sample_size'] ?? 100),
             controlVariants: self::strings($config['statistics']['control_variants'] ?? []),
+            controls: array_map(fn (mixed $variant) => (string) enum_value($variant), (array) ($config['statistics']['controls'] ?? [])),
         );
     }
 

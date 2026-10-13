@@ -89,14 +89,20 @@ return [
     |
     | "confidence"       - required confidence level for significance (0.95 = 95%).
     | "min_sample_size"  - minimum impressions per variant before a verdict.
-    | "control_variants" - variant values treated as the baseline, first match
-    |                      wins. Falls back to the variant with most impressions.
+    | "controls"         - the baseline variant per feature, e.g.
+    |                      ['pricing-page' => 'monthly']. Recommended for every
+    |                      multivariate experiment.
+    | "control_variants" - otherwise, variant values treated as the baseline,
+    |                      first match wins. Failing both, the alphabetically
+    |                      first variant is used; never the most exposed one, so
+    |                      a single new visitor cannot flip the baseline.
     |
     */
 
     'statistics' => [
         'confidence' => 0.95,
         'min_sample_size' => 100,
+        'controls' => [],
         'control_variants' => ['false', 'control', 'off', 'baseline'],
     ],
 
