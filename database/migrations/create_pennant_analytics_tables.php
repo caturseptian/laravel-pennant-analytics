@@ -32,10 +32,10 @@ return new class extends Migration
             $table->string('action', 100);
             $table->char('subject', 32)->comment('xxh128 digest of the serialized Pennant scope or guest id');
             $table->string('variant', 100);
-            $table->timestamp('created_at')->nullable();
+            $table->timestamp('created_at')->comment('time of the first hit; cohort date filters use it');
 
             $table->unique(['feature', 'action', 'subject'], 'pa_subjects_unique');
-            $table->index(['feature', 'action', 'variant'], 'pa_subjects_variant_index');
+            $table->index(['feature', 'action', 'created_at'], 'pa_subjects_cohort_index');
         });
 
         Schema::create(config('pennant-analytics.tables.metrics'), function (Blueprint $table) {

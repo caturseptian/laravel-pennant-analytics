@@ -22,7 +22,7 @@ class PersistHits implements ShouldQueue
     public int $tries = 3;
 
     /**
-     * @param  list<array{feature: string, variant: string, action: string, subject: string, date: string, impression: bool}>  $hits
+     * @param  list<array{feature: string, variant: string, action: string, subject: string, occurred_at: string, impression: bool}>  $hits
      */
     public function __construct(public array $hits) {}
 
