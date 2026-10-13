@@ -89,7 +89,9 @@ it('renders the dashboard behind the gate', function () {
     $this->get('/pennant-analytics/features/new-checkout-ui')
         ->assertOk()
         ->assertSee('Variant TRUE is outperforming Variant FALSE by 30.0% (Statistically Significant)')
-        ->assertSee('13.00%');
+        ->assertSee('13.00%')
+        ->assertSee('significantly better')
+        ->assertSee('Significant when p < 0.05 (95% confidence)');
 
     $this->getJson('/pennant-analytics/features/new-checkout-ui?action=completed-purchase')
         ->assertOk()
@@ -140,5 +142,23 @@ it('reports a date range as a cohort on the dashboard and command line', functio
 
     $this->artisan('pennant-analytics:report', ['feature' => 'cohort', 'action' => 'buy', '--from' => '2026-09-01'])
         ->expectsOutputToContain('Cohort of subjects first exposed in the date range')
+        ->assertSuccessful();
+});
+
+it('marks the significance result per variant on the command line', function () {
+    // lifetime: p = 0.031, above the Bonferroni threshold of 0.025 for two challengers.
+    // monthly:  p = 0.0014, significantly worse than the control.
+    seedExperiment('pricing', ['annual' => [2000, 234], 'lifetime' => [2000, 192], 'monthly' => [2000, 173]]);
+
+    $this->artisan('pennant-analytics:report', ['feature' => 'pricing', 'action' => 'completed-purchase'])
+        ->expectsTable(
+            ['Variant', 'Impressions', 'Conversions', 'Rate', 'Lift', 'p-value', 'Result'],
+            [
+                ['annual (control)', '2,000', '234', '11.70%', '—', '—', 'baseline'],
+                ['lifetime', '2,000', '192', '9.60%', '-17.9%', '0.0313', 'not significant'],
+                ['monthly', '2,000', '173', '8.65%', '-26.1%', '0.0014', 'significantly worse'],
+            ],
+        )
+        ->expectsOutputToContain('Significance threshold: p < 0.025 (95% confidence, Bonferroni-corrected for 2 comparisons)')
         ->assertSuccessful();
 });

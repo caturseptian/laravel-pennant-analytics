@@ -35,7 +35,8 @@
         <div class="verdict {{ $tone }}">{{ $report->summary() }}</div>
 
         <div class="card">
-            <h2>{{ $action }} · {{ rtrim(rtrim(number_format($report->confidence * 100, 2), '0'), '.') }}% confidence</h2>
+            <h2>{{ $action }}</h2>
+            <p class="muted" style="margin: -6px 0 12px; font-size: 13px;">Significant when {{ $report->thresholdDescription() }}</p>
             <div class="table-scroll">
                 <table>
                     <thead>
@@ -64,12 +65,8 @@
                             <td>
                                 @if ($c === null)
                                     <span class="muted">baseline</span>
-                                @elseif (! $c->hasEnoughData)
-                                    <span class="pill">insufficient data</span>
-                                @elseif ($c->isSignificant())
-                                    <span class="pill {{ $c->isWinning() ? 'good' : 'bad' }}">significant</span>
                                 @else
-                                    <span class="pill">not significant</span>
+                                    <span class="pill {{ $c->isSignificant() ? ($c->isWinning() ? 'good' : 'bad') : '' }}">{{ $c->verdict() }}</span>
                                 @endif
                             </td>
                         </tr>
@@ -81,7 +78,7 @@
                 Impressions and conversions are unique subjects.
                 @if ($from || $to)
                     Date range: subjects first exposed between {{ $from ?? 'the start' }} and {{ $to ?? 'today' }}, with every conversion they made since.
-                @endif Significance uses a two-sided, two-proportion z-test against the control.
+                @endif Significance uses a two-sided, two-proportion z-test against the control, with a Bonferroni correction when there is more than one challenger.
                 Results are marked "insufficient data" until each variant has {{ config('pennant-analytics.statistics.min_sample_size') }}+ impressions and 5+ expected conversions.
             </p>
         </div>
