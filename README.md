@@ -16,9 +16,9 @@ PennantAnalytics::track('new-checkout-ui', 'completed-purchase');
 
 - **Native DX**: a facade, Blade directives, route middleware, an artisan command, and Pennant's own scopes.
 - **Zero request overhead**: hits are buffered in memory and written after the response has been sent, or on a queue.
-- **Lean storage**: daily counters updated with atomic UPSERTs plus one de-dup row per user. There's no raw event log to grow without limit.
+- **Lean storage**: daily counters updated with atomic increments plus one de-dup row per user. There's no raw event log to grow without limit.
 - **Correct statistics**: unique-subject conversion rates, a two-proportion z-test, minimum-sample guards, and a Bonferroni correction for multivariate tests.
-- Supports Laravel 11, 12 and 13, PHP 8.2+, and MySQL/MariaDB, PostgreSQL and SQLite.
+- Supports Laravel 12 and 13, PHP 8.2+, and MySQL/MariaDB, PostgreSQL and SQLite.
 
 ## Installation
 
@@ -78,7 +78,14 @@ Impressions are de-duplicated. A flag checked ten times on one page counts as on
 ```php
 PennantAnalytics::track('new-checkout-ui', 'completed-purchase');
 PennantAnalytics::track('new-checkout-ui', 'clicked-signup');
+
+// Class based and enum features work exactly like in Pennant, and are
+// stored under Pennant's resolved name (e.g. the class's $name property).
+PennantAnalytics::track(NewCheckout::class, 'completed-purchase');
+PennantAnalytics::track(Flags::NewCheckout, 'completed-purchase');
 ```
+
+Feature names may be up to 150 characters and action names up to 100. A name outside those limits throws `InvalidTrackingName` from the call, so the mistake shows up in development rather than as missing data.
 
 ```blade
 <form method="post" action="/subscribe">
@@ -94,10 +101,16 @@ This mirrors Pennant's `Feature::for()`:
 PennantAnalytics::for($team)->track('new-billing', 'upgraded');
 ```
 
-Without an explicit scope the package uses **Pennant's own default scope**, so a `Feature::resolveScopeUsing(...)` call is honoured automatically. When that scope is `null` (a guest), the guest is identified by a UUID stored in their session. To use your own identifier:
+Without an explicit scope the package uses **Pennant's own default scope**, so a `Feature::resolveScopeUsing(...)` call is honoured automatically. When that scope is `null` (a guest), the guest is identified, most stable source first, by:
+
+1. your resolver, if you register one (see below)
+2. a UUID stored in their session, on routes with sessions (`web`)
+3. IP address + user agent, on stateless routes such as APIs
+
+> **Stateless routes:** the IP + user agent fallback merges guests behind one NAT who use the same browser, and splits a guest whose IP changes. Register a resolver for APIs:
 
 ```php
-PennantAnalytics::resolveGuestUsing(fn (?Request $request) => $request?->cookie('device_id'));
+PennantAnalytics::resolveGuestUsing(fn (?Request $request) => $request?->header('X-Device-Id'));
 ```
 
 ### 4. Read the results
@@ -112,7 +125,8 @@ Gate::define('viewPennantAnalytics', fn (User $user) => $user->isAdmin());
 From the CLI or in code:
 
 ```bash
-php artisan pennant-analytics:report new-checkout-ui completed-purchase --from=2026-10-01
+php artisan pennant-analytics:report new-checkout-ui completed-purchase
+php artisan pennant-analytics:report new-checkout-ui completed-purchase --from=2026-10-01 --to=2026-10-31
 ```
 
 ```
@@ -132,6 +146,8 @@ $report->leader()->conversionRate(); // 13.0
 $report->toArray();              // also served as JSON by the dashboard
 ```
 
+**Date ranges are cohorts.** `--from`/`--to` (and the dashboard's date filter) select the subjects **first exposed** in that range, inclusive, and count every conversion *those* subjects made, even after the range ends. "September" therefore means "users who entered the experiment in September and how they converted". Counting conversions by the day they happened instead would mix two different populations, and could even show rates above 100%. Cohort reports read the `subjects` table, so they are heavier than all-time reports, and they leave `total_conversions` empty because repeat events aren't stored per subject.
+
 When an experiment is over, run `php artisan pennant-analytics:forget new-checkout-ui` to delete its data.
 
 ## How it works
@@ -144,7 +160,7 @@ There are two narrow tables instead of one ever-growing event log:
 |---|---|
 | `feature`, `action`, `subject` | **unique**: atomic de-dup via `INSERT … ON CONFLICT DO NOTHING` |
 | `variant` | the variant this subject was first exposed to (attribution) |
-| `created_at` | |
+| `created_at` | time of the first hit; cohort date ranges filter on it |
 
 | `pennant_analytics_metrics` | |
 |---|---|
@@ -152,19 +168,19 @@ There are two narrow tables instead of one ever-growing event log:
 | `total` | every hit (e.g. repeat purchases) |
 | `uniques` | first hit per subject → conversion-rate numerator/denominator |
 
-Counters are bumped with an atomic UPSERT (`total = total + n`), so concurrent requests can't lose updates and no locks are needed. The dashboard only reads `metrics`, so reports stay fast regardless of traffic. `subjects` grows with *users × experiments × actions*, not with page views.
+Counters are bumped with `UPDATE … SET total = total + ?`. Only when the day's row doesn't exist yet is it inserted (insert-or-ignore, then update again if a concurrent request won). Each batch is one transaction that locks rows in a fixed, sorted order, and it is retried up to 3 times on a deadlock. This was stress-tested with 16 concurrent writers on MariaDB and PostgreSQL, and no updates were lost. The dashboard only reads `metrics`, so reports stay fast regardless of traffic. `subjects` grows with *users × experiments × actions*, not with page views.
 
 `subject` is an `xxh128` digest of Pennant's serialized scope (`App\Models\User|42`) or of the guest id. It keeps the indexed column at a fixed width. It is *not* anonymization for guessable ids.
 
 ### Request lifecycle
 
-1. `track()` asks Pennant for the value. Pennant memoizes values per request, so this is usually free. The package captures the scope Pennant resolved from its `FeatureRetrieved` event.
-2. A small `Hit` value object is appended to an in-memory buffer.
+1. `track()` asks Pennant for the value. Pennant memoizes values per request, so this is usually free. Pennant doesn't expose its resolved default scope publicly, so `PennantResolver` reads it from the `FeatureRetrieved` event Pennant fires for that lookup.
+2. A small `Hit` value object, carrying its own timestamp, is appended to an in-memory buffer. A queued hit is therefore dated when it happened, not when a worker processed it.
 3. The buffer is flushed according to `persistence`:
    - **`deferred`** (default): on `app()->terminating()`, after the response has been sent to the browser. Queue workers flush after each job.
-   - **`queue`**: a single `PersistHits` job per request, carrying plain arrays only.
+   - **`queue`**: a single `PersistHits` job per request, carrying plain arrays only. Queues deliver *at least once*: if a worker dies after the batch is committed but before the job is acknowledged, the retry counts that batch again. Expect a rare over-count, never a lost hit.
    - **`sync`**: immediately, which suits tests and scripts.
-4. Storage failures are passed to `report()` and never thrown. Analytics can't break your checkout.
+4. Error policy: runtime failures (database down, a Pennant store error) are passed to `report()` and never thrown, so analytics can't break your checkout. Programmer errors (`InvalidTrackingName`) are thrown.
 
 ### Attribution
 
@@ -207,13 +223,16 @@ See [`config/pennant-analytics.php`](config/pennant-analytics.php). Every option
 
 ```bash
 composer test
+composer analyse
 
 # against a real database
 DB_CONNECTION=pgsql DB_DATABASE=testing composer test
 DB_CONNECTION=mysql DB_DATABASE=testing composer test
 ```
 
-CI runs the suite on PHP 8.2–8.4 × Laravel 11–13 × SQLite/MySQL/PostgreSQL.
+CI runs Pint and Larastan (level 8), and the suite on PHP 8.2–8.4 × Laravel 12–13 × SQLite/MySQL/PostgreSQL.
+
+Laravel 11 is not supported. It reached end of life, and Composer refuses to install any 11.x release because of open security advisories.
 
 ## Credits
 
